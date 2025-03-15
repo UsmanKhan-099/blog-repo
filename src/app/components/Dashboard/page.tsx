@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import {supabase} from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+// import withPrivateRoute from '../../utils/withPrivateRoute';
+
 
 // Define the type for user, it could be null or the Supabase User object
 type User = {

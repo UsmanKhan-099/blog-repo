@@ -45,63 +45,76 @@ const BlogCreation = () => {
   // Handle blog submission (create or update)
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+  
     if (!title || !description) {
       alert('Please provide both title and description');
       return;
     }
-
+  
     setLoading(true);
-
+  
     const newBlog = { title, description };
-
+  
     if (editIndex !== null && editIndex !== undefined) {
       // If editing, update the existing blog in Supabase
       const blogId = blogs[editIndex]?.id;
-
+  
       if (!blogId) {
         console.error("Blog ID is missing for the edit operation.");
         setLoading(false);
-        return;
+        return; // Early return if blogId is not valid
       }
-
-      const { data, error } = await supabase
+  
+      const { error } = await supabase
         .from('posts')
         .update(newBlog)
-        .eq('id', blogId);
-
+        .eq('id', blogId)
+        .select();
+  
       setLoading(false);
-
+  
       if (error) {
         console.error('Error updating post:', error.message);
       } else {
+        // Just update the local state based on the fields we already have
         const updatedBlogs = [...blogs];
-        updatedBlogs[editIndex] = data[0]; // Replace the updated blog in the list
+        updatedBlogs[editIndex] = { ...updatedBlogs[editIndex], ...newBlog };
         setBlogs(updatedBlogs);
         alert('Blog updated successfully!');
       }
-
+  
       setEditIndex(null); // Reset edit mode
     } else {
       // If creating, add the new blog to Supabase
       const { data, error } = await supabase
         .from('posts')
-        .insert([newBlog]);
-
+        .insert([newBlog])
+        .select();
+  
       setLoading(false);
-
+  
       if (error) {
         console.error('Error creating post:', error.message);
       } else {
-        setBlogs((prevBlogs) => [...prevBlogs, data[0]]);
+        // If data is returned, use it, otherwise fetch all blogs again
+        if (data && data.length > 0) {
+          setBlogs((prevBlogs) => [...prevBlogs, data[0]]);
+        } else {
+          // Refetch all blogs to ensure we have the latest data
+          const { data: refreshedData } = await supabase.from('posts').select('*');
+          if (refreshedData) {
+            setBlogs(refreshedData);
+          }
+        }
         alert('Blog created successfully!');
       }
     }
-
+  
     // Clear inputs after submission
     setTitle('');
     setDescription('');
   };
+  
 
   // Handle edit button click
   const handleEdit = (index) => {

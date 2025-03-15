@@ -24,33 +24,43 @@ const Signup = () => {
     } else {
       // Redirect or show success message
       alert('Sign up successful! Please check your email for confirmation.');
-      router.push('/components/Dashboard');
+      router.push('/components/BlogCreation');
     }
   };
 
   return (
-    <div>
-      <h2>Sign Up</h2>
-      <form onSubmit={handleSignup}>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Enter your email"
-          required
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Enter your password"
-          required
-        />
-        <button type="submit">Sign Up</button>
-      </form>
-      {error && <p>{error}</p>}
-      <p>Already have an account? <Link href="./components/Login">Login</Link></p>
-    </div>
+    <div className="max-w-md mx-auto p-6 bg-white shadow-lg rounded-lg">
+  <h2 className="text-2xl font-bold text-center mb-6">Sign Up</h2>
+  <form onSubmit={handleSignup}>
+    <input
+      type="email"
+      value={email}
+      onChange={(e) => setEmail(e.target.value)}
+      placeholder="Enter your email"
+      required
+      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
+    />
+    <input
+      type="password"
+      value={password}
+      onChange={(e) => setPassword(e.target.value)}
+      placeholder="Enter your password"
+      required
+      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
+    />
+    <button
+      type="submit"
+      className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    >
+      Sign Up
+    </button>
+  </form>
+  {error && <p className="text-red-500 text-center mt-4">{error}</p>}
+  <p className="text-center mt-4">
+    Already have an account? <Link href="./components/Login">Login</Link>
+  </p>
+</div>
+
   );
 };
 
