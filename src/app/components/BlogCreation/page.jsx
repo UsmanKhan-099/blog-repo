@@ -1,6 +1,8 @@
 'use client'; // Client-side component declaration
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { useRouter } from 'next/navigation';
+import { useAuth } from "@/app/context/AuthContext"
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -11,12 +13,27 @@ const supabase = createClient(
 const BlogCreation = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
   const [blogs, setBlogs] = useState([]);
+  const [allBlogs, setAllBlogs] = useState([]); // Store all blogs for filtering
   const [editIndex, setEditIndex] = useState(null);
-  const [loading, setLoading] = useState(false); // Loading state for form submission
-  const [fetching, setFetching] = useState(true); // Loading state for fetching blogs
+  const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [categories, setCategories] = useState([]); // Store unique categories
+  const [selectedCategory, setSelectedCategory] = useState('All'); // Default filter to show all
+  const router = useRouter();
 
-  // Fetch blogs from Supabase when the component mounts or updates
+  // Get the user from the Auth context
+  const { user, signOut } = useAuth();
+
+  // Redirect to login page if the user is not logged in
+  useEffect(() => {
+    if (!user) {
+      router.push("./Login")
+    }
+  }, [user, router]);
+
+  // Fetch blogs and categories
   useEffect(() => {
     const fetchBlogs = async () => {
       setFetching(true);
@@ -25,35 +42,54 @@ const BlogCreation = () => {
       if (error) {
         console.error('Error fetching posts:', error.message);
       } else {
-        setBlogs(data);
+        setAllBlogs(data); // Store all blogs
+        setBlogs(data);    // Display all blogs initially
+        
+        // Fetch categories from the database
+        const { data: categoryData, error: categoryError } = await supabase.from('categories').select('*');
+        
+        if (categoryError) {
+          console.error('Error fetching categories:', categoryError.message);
+        } else {
+          setCategories(['All', ...categoryData.map(cat => cat.name)]);
+        }
       }
     };
 
     fetchBlogs();
   }, []);
 
-  // Update blog state when title or description changes
-  useEffect(() => {
-    if (editIndex !== null && editIndex !== undefined) {
-      // Update the specific blog card with the live changes
-      const updatedBlogs = [...blogs];
-      updatedBlogs[editIndex] = { ...updatedBlogs[editIndex], title, description };
-      setBlogs(updatedBlogs);
+  // Handle category filter change
+  const handleCategoryChange = (category) => {
+    setSelectedCategory(category);
+    
+    if (category === 'All') {
+      setBlogs(allBlogs); // Show all blogs
+    } else {
+      // Filter blogs by selected category
+      const filteredBlogs = allBlogs.filter(blog => 
+        blog.category === category
+      );
+      setBlogs(filteredBlogs);
     }
-  }, [title, description]); // Dependency on title and description
+  };
 
   // Handle blog submission (create or update)
   const handleSubmit = async (e) => {
     e.preventDefault();
   
-    if (!title || !description) {
-      alert('Please provide both title and description');
+    if (!title || !description || !category) {
+      alert('Please provide title, description, and category');
       return;
     }
   
     setLoading(true);
   
-    const newBlog = { title, description };
+    const newBlog = { 
+      title, 
+      description, 
+      category
+    };
   
     if (editIndex !== null && editIndex !== undefined) {
       // If editing, update the existing blog in Supabase
@@ -62,7 +98,7 @@ const BlogCreation = () => {
       if (!blogId) {
         console.error("Blog ID is missing for the edit operation.");
         setLoading(false);
-        return; // Early return if blogId is not valid
+        return;
       }
   
       const { error } = await supabase
@@ -76,14 +112,25 @@ const BlogCreation = () => {
       if (error) {
         console.error('Error updating post:', error.message);
       } else {
-        // Just update the local state based on the fields we already have
-        const updatedBlogs = [...blogs];
-        updatedBlogs[editIndex] = { ...updatedBlogs[editIndex], ...newBlog };
-        setBlogs(updatedBlogs);
+        // Update the blog in both the filtered and full list
+        const updatedBlog = { ...blogs[editIndex], ...newBlog };
+        
+        // Update both filtered and full blog lists
+        const updatedFilteredBlogs = [...blogs];
+        updatedFilteredBlogs[editIndex] = updatedBlog;
+        setBlogs(updatedFilteredBlogs);
+        
+        const updatedAllBlogs = [...allBlogs];
+        const allBlogsIndex = allBlogs.findIndex(blog => blog.id === blogId);
+        if (allBlogsIndex !== -1) {
+          updatedAllBlogs[allBlogsIndex] = updatedBlog;
+          setAllBlogs(updatedAllBlogs);
+        }
+        
         alert('Blog updated successfully!');
       }
   
-      setEditIndex(null); // Reset edit mode
+      setEditIndex(null);
     } else {
       // If creating, add the new blog to Supabase
       const { data, error } = await supabase
@@ -96,14 +143,35 @@ const BlogCreation = () => {
       if (error) {
         console.error('Error creating post:', error.message);
       } else {
-        // If data is returned, use it, otherwise fetch all blogs again
+        // If data is returned successfully
         if (data && data.length > 0) {
-          setBlogs((prevBlogs) => [...prevBlogs, data[0]]);
+          const newBlogData = data[0];
+          
+          // Add to both filtered and full blog lists
+          setAllBlogs(prevAllBlogs => [...prevAllBlogs, newBlogData]);
+          
+          if (selectedCategory === 'All' || newBlogData.category === selectedCategory) {
+            setBlogs(prevBlogs => [...prevBlogs, newBlogData]);
+          }
+
+          // Check and add new category if it doesn't exist in the categories
+          if (!categories.includes(newBlogData.category)) {
+            setCategories(prevCategories => [...prevCategories, newBlogData.category]);
+          }
         } else {
-          // Refetch all blogs to ensure we have the latest data
+          // Refetch all blogs if data isn't returned
           const { data: refreshedData } = await supabase.from('posts').select('*');
           if (refreshedData) {
-            setBlogs(refreshedData);
+            setAllBlogs(refreshedData);
+            if (selectedCategory === 'All') {
+              setBlogs(refreshedData);
+            } else {
+              setBlogs(refreshedData.filter(blog => blog.category === selectedCategory));
+            }
+            
+            // Update categories list
+            const uniqueCategories = [...new Set(refreshedData.map(blog => blog.category || 'Uncategorized'))];
+            setCategories(['All', ...uniqueCategories]);
           }
         }
         alert('Blog created successfully!');
@@ -113,14 +181,15 @@ const BlogCreation = () => {
     // Clear inputs after submission
     setTitle('');
     setDescription('');
+    setCategory('');
   };
   
-
   // Handle edit button click
   const handleEdit = (index) => {
     setTitle(blogs[index].title);
     setDescription(blogs[index].description);
-    setEditIndex(index); // Set edit mode to the selected blog
+    setCategory(blogs[index].category || '');
+    setEditIndex(index);
   };
 
   // Handle delete button click
@@ -133,11 +202,25 @@ const BlogCreation = () => {
     if (error) {
       console.error('Error deleting post:', error.message);
     } else {
-      // Remove the blog from the UI
-      const updatedBlogs = blogs.filter((_, i) => i !== index);
-      setBlogs(updatedBlogs);
+      // Remove the blog from both filtered and full lists
+      const updatedFilteredBlogs = blogs.filter((_, i) => i !== index);
+      setBlogs(updatedFilteredBlogs);
+      
+      const updatedAllBlogs = allBlogs.filter(blog => blog.id !== blogId);
+      setAllBlogs(updatedAllBlogs);
+      
+      // Update categories list
+      const remainingCategories = [...new Set(updatedAllBlogs.map(blog => blog.category || 'Uncategorized'))];
+      setCategories(['All', ...remainingCategories]);
+      
       alert('Blog deleted successfully!');
     }
+  };
+
+  const handleSignOut = async(e) => {
+    e.preventDefault()
+    await signOut();
+    router.push("./Login")
   };
 
   return (
@@ -174,93 +257,79 @@ const BlogCreation = () => {
           />
         </div>
 
-        <button
-          type="submit"
-          className={`bg-blue-500 text-white p-2 rounded-lg ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-          disabled={loading}
-        >
-          {loading ? 'Submitting...' : editIndex !== null ? 'Update Blog' : 'Create Blog'}
-        </button>
+        <div className="mb-5">
+          <label className="block mb-2 text-sm font-medium text-gray-900" htmlFor="category-input">
+            Select Category
+          </label>
+          <select
+            id="category-input"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+            required
+          >
+            <option value="">Select a category</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mb-5">
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full"
+          >
+            {loading ? 'Submitting...' : editIndex === null ? 'Create Blog' : 'Update Blog'}
+          </button>
+        </div>
       </form>
 
-      {/* Render Blog Cards */}
-      <div className="container px-5 py-24 mx-auto">
-        <div className="flex flex-wrap -m-4">
-          {fetching ? (
-            <div className="w-full text-center py-10">Loading blogs...</div>
-          ) : (
+      {/* Category filter */}
+      <div className="mb-5">
+        <label className="block mb-2 text-sm font-medium text-gray-900">Filter by Category</label>
+        <select
+          onChange={(e) => handleCategoryChange(e.target.value)}
+          className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+        >
+          {categories.map((category) => (
+            <option key={category} value={category}>{category}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Display Blogs */}
+      <div className="max-w-lg mx-auto">
+        {fetching ? (
+          <p>Loading...</p>
+        ) : (
+          blogs.length > 0 ? (
             blogs.map((blog, index) => (
-              <div key={index} className="p-4 md:w-1/3">
-                <div className="h-full border-2 border-gray-200 border-opacity-60 rounded-lg overflow-hidden">
-                  <img
-                    alt="blog"
-                    className="lg:h-48 md:h-36 w-full object-cover object-center"
-                    src="https://dummyimage.com/720x400"
-                  />
-                  <div className="p-6">
-                    <h2 className="tracking-widest text-xs title-font font-medium text-gray-400 mb-1">
-                      CATEGORY
-                    </h2>
-                    <h1 className="title-font text-lg font-medium text-gray-900 mb-3">
-                      {/* Editable title field */}
-                      <input
-                        type="text"
-                        value={blog.title}
-                        onChange={(e) => {
-                          setTitle(e.target.value);
-                          setEditIndex(index);
-                        }}
-                        className="border-b border-gray-400 bg-transparent w-full"
-                      />
-                    </h1>
-                    <p className="leading-relaxed mb-3">
-                      {/* Editable description field */}
-                      <input
-                        type="text"
-                        value={blog.description}
-                        onChange={(e) => {
-                          setDescription(e.target.value);
-                          setEditIndex(index);
-                        }}
-                        className="border-b border-gray-400 bg-transparent w-full"
-                      />
-                    </p>
-                    <div className="flex items-center flex-wrap">
-                      <a className="text-indigo-500 inline-flex items-center md:mb-2 lg:mb-0">
-                        Learn More
-                        <svg
-                          className="w-4 h-4 ml-2"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          viewBox="0 0 24 24">
-                          <path d="M5 12h14" />
-                          <path d="M12 5l7 7-7 7" />
-                        </svg>
-                      </a>
-                    </div>
-                    <div className="flex mt-4">
-                      <button
-                        onClick={() => handleEdit(index)}
-                        className="bg-yellow-500 text-white p-2 rounded-lg mr-2"
-                      >
-                        Update
-                      </button>
-                      <button
-                        onClick={() => handleDelete(index)}
-                        className="bg-red-500 text-white p-2 rounded-lg"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
+              <div key={blog.id} className="border p-4 my-2 rounded-lg shadow-sm">
+                <h2 className="text-xl font-semibold">{blog.title}</h2>
+                <p>{blog.description}</p>
+                <p className="text-gray-500">Category: {blog.category || 'Uncategorized'}</p>
+                <div className="flex justify-between mt-4">
+                  <button
+                    onClick={() => handleEdit(index)}
+                    className="bg-yellow-500 text-white py-2 px-4 rounded-lg"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(index)}
+                    className="bg-red-500 text-white py-2 px-4 rounded-lg"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))
-          )}
-        </div>
+          ) : (
+            <p>No blogs available.</p>
+          )
+        )}
       </div>
     </div>
   );

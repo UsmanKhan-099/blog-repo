@@ -1,7 +1,6 @@
-// context/AuthContext.js
-'use client'
-import { createContext, useContext, useEffect, useState } from "react";
-import {supabase} from "../lib/supabase";  // Your Supabase client
+'use client';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';  // Your Supabase client
 
 const AuthContext = createContext();
 
@@ -14,13 +13,17 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if there's an existing session when app loads
-    const session = supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        setUser(data.session.user);
+    // Fetch session from Supabase when the app loads
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setUser(session.user);
       }
-      setLoading(false);
-    });
+      setLoading(false);  // Set loading to false once session is checked
+    };
+
+    getSession();
+    
 
     // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(
@@ -33,14 +36,26 @@ export const AuthProvider = ({ children }) => {
       }
     );
 
+    // Cleanup listener on component unmount
     return () => {
-      authListener.subscription.unsubscribe();  // Cleanup listener
+      authListener?.unsubscribe();
     };
   }, []);
+
+  // Function to sign out
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Error signing out:', error.message);
+    } else {
+      setUser(null);  // Clear user state on sign out
+    }
+  };
 
   const value = {
     user,
     loading,
+    signOut,  // Providing signOut function
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
