@@ -40,6 +40,26 @@ const BlogCreation = () => {
     setCategories(data || []);
   };
 
+  const fetchUserBlogs = async () => {
+    if (!user) return;
+  
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('user_id', user.id); // Fetch only blogs of the logged-in user
+  
+    if (error) {
+      console.error('Error fetching blogs:', error);
+    } else {
+      setBlogs(data);
+    }
+  };
+  
+  useEffect(() => {
+    if (user) fetchUserBlogs();
+  }, [user]);
+  
+
   useEffect(() => {
     if (!user) return;
 
@@ -90,7 +110,7 @@ const BlogCreation = () => {
     if (error) {
       toast.error(`Error: ${error.message}`);
     } else {
-      toast.info(editBlog ? 'Blog updated successfully!' : 'Blog created successfully!');
+      toast.success(editBlog ? 'Blog updated successfully!' : 'Blog created successfully!');
       setEditBlog(null);
       setTitle('');
       setDescription('');
